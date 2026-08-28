@@ -3,17 +3,12 @@ import dotenv from "dotenv";
 import connectDB from './db/index.js';
 import { app } from "./app.js";
 
-/*
-  📌 DOTENV CONFIGURATION:
-  - `dotenv.config({ path: "./.env" })`: Is line ko application me SABSE PEHLE execute kiya jata hai.
-  - Kyu? Taaki pooray project me kahin bhi `process.env` se variables read karne par undefined na aaye.
-*/
-dotenv.config({ path: "./.env" });
 
-/*
-  📌 EXECUTE DB CONNECTION:
-  - `connectDB()` ko call karte hi yeh MongoDB se connect hona start ho jata hai.
-*/
+dotenv.config({
+  path: "./.env"
+});
+
+
 connectDB()
   .then(() => {
     app.listen(process.env.PORT || 8000, () => {
