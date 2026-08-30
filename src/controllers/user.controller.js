@@ -21,6 +21,8 @@ const generateAccessAndRefreshToken = async (userId) => {
   }
 }
 
+
+// register user
 const registerUser = asyncHandler(async (req, res) => {
   // 1. Get user details from frontend .
   // 2. Validate - not empety.
@@ -88,6 +90,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
 })
 
+// login user
 const loginUser = asyncHandler(async (req, res) => {
   //req body se data lao
   //username or email
@@ -173,6 +176,7 @@ const logoutUser = asyncHandler(async (req, res) => {
     )
 
 })
+// acess token ko referesh krna 
 const refershAccessToken = asyncHandler(async (req, res) => {
   const incomingRefreshToken = req.cookies.refreshToken ||
     req.body.refreshToken
@@ -217,6 +221,7 @@ const refershAccessToken = asyncHandler(async (req, res) => {
   }
 })
 
+// password ko change krna 
 const changeCurrentPassword = asyncHandler(async (req, res) => {
   const { oldPassword, newPassword } = req.body
 
@@ -239,6 +244,8 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
 
 })
 
+
+// current user ka details lena 
 const getCurrentUser = asyncHandler(async (req, res) => {
   return res
     .status(200)
@@ -247,7 +254,7 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     )
 })
 
-
+// current user ka details ko update krna 
 const updateAccountDetails = asyncHandler(async (req, res) => {
 
   const { fullName, email } = req.body
@@ -280,7 +287,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
 })
 
 
-
+//update current user avatar
 const updateUserAvatar = asyncHandler(async (req, res) => {
 
   const
@@ -323,6 +330,7 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
 })
 
 
+// update current user cover image
 const updateUserCoverImage = asyncHandler(async (req, res) => {
 
   const coverImageLocalPath = req.files?.path
@@ -496,11 +504,142 @@ export {
     → Same httpOnly + secure options dena padta hai clearCookie me bhi — browser
       tabhi cookie delete karta hai agar options match karein.
 
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 FUNCTION: refershAccessToken (POST /api/v1/users/refresh-access-token)
+  ─────────────────────────────────────────────────────────────────────────────
+  - Kya karta hai? Jab access token expire ho jaata hai, tab client apna refresh
+    token bhejta hai aur yeh controller naya access token generate karke deta hai.
+    (Bina re-login kiye session extend karne ka mechanism.)
+
+  - const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken
+    → DO sources se refresh token dhundha:
+      a) Cookie (web browser apps ke liye)
+      b) Body (mobile apps ke liye jo cookies support nahi karte)
+
+  - jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET)
+    → Token ka signature verify kiya secret key se.
+    → Agar tamper hua ya expired hai toh error throw hoga.
+    → decodedToken me user ka _id milta hai jo token me encode tha.
+
+  - User.findById(decodedToken?._id)
+    → DB se user dhundha token ke _id se — user exist karna chahiye.
+
+  - if (incomingRefreshToken !== user?.refreshToken)
+    → DB me stored refresh token se incoming token compare kiya.
+    → Kyu? Agar user already logout kar chuka hai toh DB ka token delete/undefined
+      ho gaya hoga — mismatch hoga aur access deny hoga (replay attack se bachao).
+
+  - generateAccessAndRefreshToken(user._id)
+    → Naya access token aur naya refresh token generate kiya (Token Rotation).
+    → Kyu naya refresh token? Security best practice — purana token invalidate
+      karo, naya do. Isse stolen refresh token reuse nahi ho sakta.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 FUNCTION: changeCurrentPassword (POST /api/v1/users/change-password)
+  ─────────────────────────────────────────────────────────────────────────────
+  - Kya karta hai? Logged-in user apna current password change kar sakta hai.
+  - verifyJWT middleware pehle chalega — req.user available hai isliye alag se
+    user dhundhna nahi pada.
+
+  - const { oldPassword, newPassword } = req.body
+    → Request body se purana aur naya password lo.
+
+  - user.isPasswordCorrect(oldPassword)
+    → User model ka custom bcrypt method — purana password verify karo.
+    → Kyu? Pehle confirm karo ki jo purana password diya woh actually sahi hai.
+      Warna koi aur bhi kisi ka password change kar sakta tha (session hijacking).
+
+  - user.password = newPassword
+    → Naya password assign kiya.
+    → Mongoose ka pre("save") hook automatically isse hash kar dega jab save hoga.
+    → Direct hashed password store nahi karna padta — model khud handle karta hai.
+
+  - user.save({ validateBeforeSave: false })
+    → Sirf password field save kiya. validateBeforeSave: false isliye ki baaki
+      required fields (username, email etc.) dobara validate nahi karni — woh
+      already sahi hain, bas password hi change ho raha hai.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 FUNCTION: getCurrentUser (GET /api/v1/users/current-user)
+  ─────────────────────────────────────────────────────────────────────────────
+  - Kya karta hai? Currently logged-in user ki poori profile return karta hai.
+  - Iska use: Frontend dashboard me user ki info dikhane ke liye.
+
+  - verifyJWT middleware ne req.user me user already set kar rakha hai.
+  - return res.status(200).json(new ApiResponse(200, req.user, "User fetched"))
+    → req.user directly return kar diya — koi extra DB query nahi!
+    → Password aur refreshToken already exclude hain kyunki verifyJWT me
+      .select("-password -refreshToken") use kiya tha.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 FUNCTION: updateAccountDetails (PATCH /api/v1/users/update-account)
+  ─────────────────────────────────────────────────────────────────────────────
+  - Kya karta hai? User apna fullName aur email update kar sakta hai.
+  - Note: File update (avatar/coverImage) ke liye alag controllers hain —
+    text aur file updates ko alag rakhna best practice hai.
+
+  - const { fullName, email } = req.body → Sirf yeh do text fields update hoti hain.
+
+  - User.findByIdAndUpdate(req.user._id, { $set: { fullName, email } }, { new: true })
+    → $set → Sirf in fields ko update karo, baaki sab untouched rahein.
+    → { new: true } → Updated document return karo (default purana document return hota).
+    → .select("-password") → Password response me nahi bheja.
+
+  - PATCH use kiya kyu, PUT nahi?
+    → PATCH: Sirf kuch fields update karo (partial update).
+    → PUT: Poora resource replace karo (saare fields mandatory).
+    → Yahan sirf 2 fields update ho rahi hain — PATCH sahi choice hai.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 FUNCTION: updateUserAvatar (PATCH /api/v1/users/avatar)
+  ─────────────────────────────────────────────────────────────────────────────
+  - Kya karta hai? User apna avatar (profile picture) update kar sakta hai.
+  - Route pe Multer middleware bhi lagega jo file ko locally save karega.
+
+  - const avatarLocalPath = req.files?.path
+    → Multer ne file local disk pe save ki, uska path lo.
+    → Optional chaining (?.) → agar file nahi aai toh crash mat karo.
+
+  - if (!avatarLocalPath) throw ApiError(400, "Avatar file is missing")
+    → File mandatory hai — bina file ke update possible nahi.
+
+  - uploadOnCloudinary(avatarLocalPath)
+    → Local disk se Cloudinary pe upload karo, URL wala response milega.
+
+  - if (!avatar.url) → Upload fail ho sakta hai, check zarori hai.
+
+  - User.findByIdAndUpdate(..., { $set: { avatar: avatar.url } }, { new: true })
+    → DB me sirf avatar ka URL update kiya.
+
+  - TODO / Improvement:
+    → Purana Cloudinary avatar (old URL) bhi delete karna chahiye jab naya upload ho.
+      Warna Cloudinary pe unnecessary files padi rehti hain (storage waste + cost).
+
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 FUNCTION: updateUserCoverImage (PATCH /api/v1/users/cover-image)
+  ─────────────────────────────────────────────────────────────────────────────
+  - updateUserAvatar jaisi hi logic, sirf coverImage ke liye.
+
+  - const coverImageLocalPath = req.files?.path → Local file path lo.
+
+  - if (!coverImageLocalPath) → File missing hone par error.
+
+  - uploadOnCloudinary(coverImageLocalPath) → Cloudinary pe upload karo.
+
+  - if (!coverImage.url) → Upload fail check.
+
+  - User.findByIdAndUpdate(..., { $set: { coverImage: coverImage.url } }, { new: true })
+    → DB me cover image URL update kiya.
+
+  - TODO / Improvement:
+    → Purana cover image bhi Cloudinary se delete karo (same as avatar TODO).
+
   =============================================================================
   🎯 EK LINE SUMMARY:
-  Yeh controller file User ke register, login aur logout ki poori business logic
-  handle karti hai — validation, DB queries, file upload, JWT tokens, aur
-  secure cookie management sab yahan hota hai.
+  Yeh controller file User ke register, login, logout, token refresh, password
+  change, profile fetch, account details update aur image update ki poori
+  business logic handle karti hai — validation, DB queries, file upload,
+  JWT tokens, aur secure cookie management sab yahan hota hai.
 
   📌 INTERVIEW ME POOCHHE JAANE WAALE CONCEPTS:
   → asyncHandler kya hai aur kyu use kiya?

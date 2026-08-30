@@ -40,11 +40,12 @@ export default router
      - Yeh humein modular routing banaane me help karta hai — saare user routes
        ek alag file me rakhte hain, app.js me nahi. Isse code clean aur scalable rehta hai.
 
-  2. import { loginUser, logoutUser, registerUser } from "../controllers/user.controller.js"
-     - Teen controller functions import kiye:
-       • registerUser  → naya user banana
-       • loginUser     → user login karna
-       • logoutUser    → user logout karna
+  2. import { ..., loginUser, logoutUser, registerUser, refershAccessToken } from "../controllers/user.controller.js"
+     - Char controller functions import kiye:
+       • registerUser        → naya user banana
+       • loginUser           → user login karna
+       • logoutUser          → user logout karna
+       • refershAccessToken  → expired access token ko refresh karna
      - Controller me actual business logic hai, route file sirf "kahan jaana hai" batati hai.
 
   3. import { upload } from "../middlewares/multer.middleware.js"
@@ -61,6 +62,10 @@ export default router
      - Express ka ek naya Router instance banaya.
      - Yeh /api/v1/users ke baad wale saare sub-routes handle karega.
 
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 PUBLIC ROUTES (koi bhi access kar sakta hai):
+  ─────────────────────────────────────────────────────────────────────────────
+
   6. router.route("/register").post(upload.fields([...]), registerUser)
      - POST /api/v1/users/register endpoint define kiya.
      - upload.fields([...]) → pehle middleware chalta hai jo avatar aur coverImage files accept karta hai.
@@ -73,25 +78,40 @@ export default router
      - Koi middleware nahi — login ke liye sirf username/email aur password chahiye.
      - loginUser controller credentials check karke tokens generate karta hai.
 
-  8. router.route("/logout").post(verifyJWT, logoutUser)
+  8. router.route("/refresh-access-token").post(refershAccessToken)
+     - POST /api/v1/users/refresh-access-token endpoint define kiya.
+     - Public route hai — access token expire hone ke baad refresh token se naya lo.
+     - verifyJWT nahi lagaya kyunki access token hi expire hua hai — woh verify nahi hoga.
+     - Refresh token cookie ya body me bhejo, naya access token milega.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 SECURED ROUTES (sirf logged-in user — verifyJWT zaroori):
+  ─────────────────────────────────────────────────────────────────────────────
+
+  9. router.route("/logout").post(verifyJWT, logoutUser)
      - POST /api/v1/users/logout endpoint define kiya.
      - verifyJWT → pehle middleware chalta hai: token valid hai tabhi aage jaega.
        Iske baad req.user me user ki details aa jaati hain.
      - logoutUser → phir controller DB se refreshToken hataata hai aur cookies clear karta hai.
      - Yeh ek "secured route" hai — bina valid JWT ke logout possible nahi.
 
-  9. export default router
-     - Is router ko default export kiya taaki app.js me import karke
+  ─────────────────────────────────────────────────────────────────────────────
+  🔧 EXPORT:
+  ─────────────────────────────────────────────────────────────────────────────
+  - export default router
+     → Is router ko default export kiya taaki app.js me import karke
        app.use("/api/v1/users", userRouter) se connect kiya ja sake.
 
   =============================================================================
   🎯 EK LINE SUMMARY:
-  Yeh file user-related saare HTTP routes define karti hai — register (with file upload),
-  login (public), aur logout (JWT protected) — aur controllers se connect karti hai.
+  Yeh file user-related saare HTTP routes define karti hai — register (with file
+  upload), login, token refresh (public) aur logout (JWT protected) — aur
+  inhe controllers se connect karti hai.
 
   📌 FULL ROUTE PATHS:
-  POST /api/v1/users/register  → naya user banao (avatar + coverImage ke saath)
-  POST /api/v1/users/login     → login karo, tokens milenge
-  POST /api/v1/users/logout    → logout karo (JWT zaroori hai)
+  POST /api/v1/users/register             → naya user banao (avatar + coverImage ke saath)
+  POST /api/v1/users/login                → login karo, tokens milenge
+  POST /api/v1/users/refresh-access-token → expired access token refresh karo
+  POST /api/v1/users/logout               → logout karo (JWT zaroori hai)
   =============================================================================
 */
